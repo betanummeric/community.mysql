@@ -429,8 +429,19 @@ def privileges_get(cursor, user, host, maria_role=False):
             res = re.match("""GRANT (.+) ON (.+) TO (['`"]).*\\3@(['`"]).*\\4( IDENTIFIED BY PASSWORD (['`"]).+\\6)? ?(.*)""", grant[0])
         else:
             res = re.match("""GRANT (.+) ON (.+) TO (['`"]).*\\3""", grant[0])
+
         if res is None:
+            # If a user has roles assigned, we'll have one of priv tuples looking like
+            # GRANT `admin`@`%` TO `user1`@`localhost`
+            # which will result None as res value.
+            # As we use the mysql_role module to manipulate roles
+            # we just ignore such privs below:
+            res = re.match("""GRANT (.+) TO (['`"]).*""", grant[0])
+            if not maria_role and res:
+                continue
+
             raise InvalidPrivsError('unable to parse the MySQL grant string: %s' % grant[0])
+
         privileges = res.group(1).split(",")
         privileges = [pick(x.strip()) for x in privileges]
 
@@ -639,6 +650,7 @@ def privileges_revoke(cursor, user, host, db_table, priv, grant_option, maria_ro
 
     query = ' '.join(query)
     cursor.execute(query, params)
+    cursor.execute("FLUSH PRIVILEGES")
 
 
 def privileges_grant(cursor, user, host, db_table, priv, tls_requires, maria_role=False):
